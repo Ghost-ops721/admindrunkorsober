@@ -155,6 +155,13 @@
         flex: 1;
         min-width: 140px;
       }
+      .btn-danger {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        flex: 0 0 auto;
+        min-width: 120px;
+      }
       .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
       .err { color: var(--accent); font-size: 13px; margin-top: 8px; }
       .hidden { display: none !important; }
@@ -188,6 +195,7 @@
       <div class="toolbar">
         <button class="filter-btn active" data-filter="pending" type="button">Waiting</button>
         <button class="filter-btn" data-filter="all" type="button">All</button>
+        <button class="filter-btn" data-filter="leaderboard" type="button">Leaderboard</button>
         <button class="filter-btn" data-filter="high" type="button">High (11+)</button>
         <button class="filter-btn" data-filter="low" type="button">Low (0–3)</button>
         <button class="filter-btn" id="btnRefresh" type="button">↻ Refresh</button>
@@ -212,6 +220,7 @@
         </div>
         <div class="actions">
           <button class="btn btn-submit" id="btnReveal" type="button">Reveal on screen 🔥</button>
+          <button class="btn btn-danger hidden" id="btnDelete" type="button">Delete</button>
         </div>
         <p class="err" id="actionErr"></p>
       </div>
@@ -311,13 +320,14 @@
         }
         $("emptyMsg").classList.add("hidden");
 
-        items.forEach((item) => {
+        items.forEach((item, idx) => {
           const card = document.createElement("div");
           card.className = "card" + (selected?.id === item.id ? " selected" : "");
+          const rankBadge = filter === "leaderboard" ? `<span class="badge sober">#${idx + 1}</span> ` : "";
           card.innerHTML = `
             <img src="${item.image || ""}" alt="" loading="lazy" />
             <div class="card-body">
-              ${!item.admin_override
+              ${rankBadge}${!item.admin_override
                 ? '<span class="badge override">Waiting</span>'
                 : `<span class="badge drunk">${item.body_count ?? "?"}</span>`}
               <div class="meta">${item.admin_override ? (item.headline || "Revealed") : "Needs number"}</div>
@@ -325,6 +335,12 @@
           card.addEventListener("click", () => selectItem(item));
           grid.appendChild(card);
         });
+      }
+
+      function updateDetailActions() {
+        const revealed = Boolean(selected?.admin_override);
+        $("btnReveal").textContent = revealed ? "Save number" : "Reveal on screen 🔥";
+        $("btnDelete").classList.toggle("hidden", !revealed);
       }
 
       function selectItem(item) {
@@ -337,6 +353,7 @@
         $("countInput").value = item.body_count != null ? String(item.body_count) : "";
         $("detailMeta").textContent = `${item.id.slice(0, 8)}… · ${new Date(item.created_at).toLocaleString()}`;
         $("actionErr").textContent = "";
+        updateDetailActions();
       }
 
       function pendingCount(list) {
@@ -377,7 +394,9 @@
       }
 
       function pollIntervalMs() {
-        return filter === "pending" ? POLL_MS_PENDING : POLL_MS_OTHER;
+        if (filter === "pending") return POLL_MS_PENDING;
+        if (filter === "leaderboard") return POLL_MS_OTHER;
+        return POLL_MS_OTHER;
       }
 
       function stopPolling() {
@@ -396,7 +415,7 @@
         }, pollIntervalMs());
       }
 
-      async function revealCount() {
+      async function saveCount() {
         if (!selected) return;
         const bodyCount = parseInt($("countInput").value, 10);
         $("actionErr").textContent = "";
@@ -409,6 +428,20 @@
             method: "PATCH",
             body: JSON.stringify({ bodyCount }),
           });
+          await loadList();
+        } catch (e) {
+          $("actionErr").textContent = e.message;
+        }
+      }
+
+      async function deleteFromBoard() {
+        if (!selected || !selected.admin_override) return;
+        if (!confirm("Remove this person from the leaderboard? This cannot be undone.")) return;
+        $("actionErr").textContent = "";
+        try {
+          await api(`/analyses/${selected.id}`, { method: "DELETE" });
+          selected = null;
+          $("detail").classList.remove("show");
           await loadList();
         } catch (e) {
           $("actionErr").textContent = e.message;
@@ -462,9 +495,10 @@
         loadList({ silent: true }).catch(() => {});
       });
 
-      $("btnReveal").addEventListener("click", revealCount);
+      $("btnReveal").addEventListener("click", saveCount);
+      $("btnDelete").addEventListener("click", deleteFromBoard);
       $("countInput").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") revealCount();
+        if (e.key === "Enter") saveCount();
       });
       $("countInput").addEventListener("input", () => {
         $("countInput").value = $("countInput").value.replace(/\D/g, "").slice(0, 3);
