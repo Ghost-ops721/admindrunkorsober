@@ -241,6 +241,7 @@
       let filter = "pending";
       let items = [];
       let selected = null;
+      let lastPendingCount = null;
 
       const $ = (id) => document.getElementById(id);
 
@@ -313,9 +314,23 @@
         $("actionErr").textContent = "";
       }
 
+      function pendingCount(list) {
+        return (list || items).filter((i) => !i.admin_override).length;
+      }
+
+      function alertNewPending(count) {
+        if (lastPendingCount != null && count > lastPendingCount) {
+          try {
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+          } catch {}
+        }
+        lastPendingCount = count;
+      }
+
       async function loadList() {
         const data = await api(`/analyses?filter=${filter}&limit=60`);
         items = data.items || [];
+        alertNewPending(pendingCount(items));
         if (selected) {
           selected = items.find((i) => i.id === selected.id) || null;
         }
