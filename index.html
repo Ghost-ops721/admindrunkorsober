@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0a0a12" />
+    <title>Admin — Body Count</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0a0a12;
+        --surface: #14141f;
+        --border: #2a2a3a;
+        --text: #f5f5f7;
+        --muted: #8888a0;
+        --accent: #ff3366;
+        --green: #00c896;
+        --radius: 12px;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 16px;
+      }
+      h1 { font-size: 22px; margin-bottom: 4px; }
+      .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+      .login, .panel { max-width: 960px; margin: 0 auto; }
+      .login { padding-top: 20vh; }
+      .field { margin-bottom: 12px; }
+      label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+      input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font-size: 16px;
+      }
+      input:focus,
+      input:focus-visible {
+        outline: none;
+        border-color: var(--border);
+        box-shadow: none;
+      }
+      .btn {
+        padding: 12px 18px;
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      input.pin-input {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.35em;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, #ff3366, #ff6b35);
+        color: #fff;
+        width: 100%;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .filter-btn {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .filter-btn.active {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .card.selected { border-color: var(--accent); }
+      .card img {
+        width: 100%;
+        aspect-ratio: 3/4;
+        object-fit: cover;
+        display: block;
+        background: #000;
+      }
+      .card-body { padding: 10px; }
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .badge.sober { background: rgba(0,200,150,0.15); color: var(--green); }
+      .badge.drunk { background: rgba(255,51,102,0.15); color: var(--accent); }
+      .badge.override { margin-left: 4px; background: rgba(255,176,32,0.15); color: #ffb020; }
+      .meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+      .detail {
+        margin-top: 20px;
+        padding: 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        display: none;
+      }
+      .detail.show { display: block; }
+      .detail-head { display: flex; gap: 16px; flex-wrap: wrap; }
+      .detail-head img {
+        width: 120px;
+        height: 160px;
+        object-fit: cover;
+        border-radius: 10px;
+        border: 2px solid var(--border);
+      }
+      .detail-info { flex: 1; min-width: 200px; }
+      .detail-info h2 { font-size: 18px; margin-bottom: 8px; }
+      .detail-info p { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
+      .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+      .count-input {
+        font-size: 42px;
+        font-weight: 800;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.05em;
+      }
+      .btn-submit {
+        background: linear-gradient(135deg, #ff3366, #ff6b35);
+        color: #fff;
+        border: none;
+        flex: 1;
+        min-width: 140px;
+      }
+      .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+      .err { color: var(--accent); font-size: 13px; margin-top: 8px; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <form class="login" id="loginView" autocomplete="off">
+      <h1>Admin — Body Count</h1>
+      <p class="sub">Enter PIN to continue.</p>
+      <div class="field">
+        <label for="pinInput">PIN</label>
+        <input
+          id="pinInput"
+          class="pin-input"
+          type="tel"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          autocomplete="off"
+          placeholder="••••••"
+        />
+      </div>
+      <button class="btn btn-primary" id="btnLogin" type="submit">Enter</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+
+    <div class="panel hidden" id="panelView">
+      <h1>Body Count — Admin</h1>
+      <p class="sub">Tap a guest · enter their number · reveal on screen</p>
+
+      <div class="toolbar">
+        <button class="filter-btn active" data-filter="pending" type="button">Waiting</button>
+        <button class="filter-btn" data-filter="all" type="button">All</button>
+        <button class="filter-btn" data-filter="high" type="button">High (11+)</button>
+        <button class="filter-btn" data-filter="low" type="button">Low (0–3)</button>
+        <button class="filter-btn" id="btnRefresh" type="button">↻ Refresh</button>
+        <button class="filter-btn" id="btnLogout" type="button">Logout</button>
+      </div>
+
+      <div class="grid" id="grid"></div>
+      <p class="empty hidden" id="emptyMsg">No scans yet.</p>
+
+      <div class="detail" id="detail">
+        <div class="detail-head">
+          <img id="detailImg" alt="" />
+          <div class="detail-info">
+            <h2 id="detailHeadline">—</h2>
+            <p id="detailRoast"></p>
+            <p class="meta" id="detailMeta"></p>
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label for="countInput">Body count</label>
+          <input id="countInput" class="count-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="0" />
+        </div>
+        <div class="actions">
+          <button class="btn btn-submit" id="btnReveal" type="button">Reveal on screen 🔥</button>
+        </div>
+        <p class="err" id="actionErr"></p>
+      </div>
+    </div>
+
+    <script>
+      const LS_PIN = "dos_admin_pin";
+
+      function resolveApiBase() {
+        const override = new URLSearchParams(location.search).get("api");
+        if (override) return override.replace(/\/$/, "") + "/admin";
+
+        const port = location.port;
+        const isStaticDev =
+          location.protocol === "file:" ||
+          port === "5500" ||
+          port === "5501" ||
+          port === "8080" ||
+          port === "5173";
+
+        if (isStaticDev) return `http://${location.hostname}:5001/api/dos/admin`;
+        return location.origin + "/api/dos/admin";
+      }
+
+      const API = resolveApiBase();
+      let pin = "";
+      let filter = "pending";
+      let items = [];
+      let selected = null;
+
+      const $ = (id) => document.getElementById(id);
+
+      function showLogin() {
+        $("loginView").classList.remove("hidden");
+        $("panelView").classList.add("hidden");
+      }
+
+      function showPanel() {
+        $("loginView").classList.add("hidden");
+        $("panelView").classList.remove("hidden");
+      }
+
+      async function api(path, opts = {}) {
+        let r;
+        try {
+          r = await fetch(API + path, {
+            ...opts,
+            headers: {
+              "Content-Type": "application/json",
+              "X-DOS-Admin-Pin": pin,
+              ...(opts.headers || {}),
+            },
+          });
+        } catch {
+          throw new Error("Cannot reach API — is the backend running on port 5001?");
+        }
+        const text = await r.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch {}
+        if (!r.ok) throw new Error(data.error || "Request failed");
+        return data;
+      }
+
+      function renderGrid() {
+        const grid = $("grid");
+        grid.innerHTML = "";
+        if (!items.length) {
+          $("emptyMsg").classList.remove("hidden");
+          $("detail").classList.remove("show");
+          return;
+        }
+        $("emptyMsg").classList.add("hidden");
+
+        items.forEach((item) => {
+          const card = document.createElement("div");
+          card.className = "card" + (selected?.id === item.id ? " selected" : "");
+          card.innerHTML = `
+            <img src="${item.image || ""}" alt="" loading="lazy" />
+            <div class="card-body">
+              ${!item.admin_override
+                ? '<span class="badge override">Waiting</span>'
+                : `<span class="badge drunk">${item.body_count ?? "?"}</span>`}
+              <div class="meta">${item.admin_override ? (item.headline || "Revealed") : "Needs number"}</div>
+            </div>`;
+          card.addEventListener("click", () => selectItem(item));
+          grid.appendChild(card);
+        });
+      }
+
+      function selectItem(item) {
+        selected = item;
+        renderGrid();
+        $("detail").classList.add("show");
+        $("detailImg").src = item.image || "";
+        $("detailHeadline").textContent = item.admin_override ? (item.headline || "Revealed") : "Waiting for number…";
+        $("detailRoast").textContent = item.roast || "";
+        $("countInput").value = item.body_count != null ? String(item.body_count) : "";
+        $("detailMeta").textContent = `${item.id.slice(0, 8)}… · ${new Date(item.created_at).toLocaleString()}`;
+        $("actionErr").textContent = "";
+      }
+
+      async function loadList() {
+        const data = await api(`/analyses?filter=${filter}&limit=60`);
+        items = data.items || [];
+        if (selected) {
+          selected = items.find((i) => i.id === selected.id) || null;
+        }
+        renderGrid();
+        if (selected) selectItem(selected);
+      }
+
+      async function revealCount() {
+        if (!selected) return;
+        const bodyCount = parseInt($("countInput").value, 10);
+        $("actionErr").textContent = "";
+        if (!Number.isFinite(bodyCount) || bodyCount < 0 || bodyCount > 999) {
+          $("actionErr").textContent = "Enter a number 0–999";
+          return;
+        }
+        try {
+          await api(`/analyses/${selected.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ bodyCount }),
+          });
+          await loadList();
+        } catch (e) {
+          $("actionErr").textContent = e.message;
+        }
+      }
+
+      async function tryLogin() {
+        pin = $("pinInput").value.trim();
+        $("loginErr").textContent = "";
+        if (!/^\d{6}$/.test(pin)) {
+          $("loginErr").textContent = "Enter 6-digit PIN";
+          return;
+        }
+        try {
+          await api("/analyses?limit=1");
+          sessionStorage.setItem(LS_PIN, pin);
+          showPanel();
+          await loadList();
+        } catch (e) {
+          $("loginErr").textContent = e.message === "Invalid PIN" ? "Wrong PIN" : e.message;
+        }
+      }
+
+      $("loginView").addEventListener("submit", (e) => {
+        e.preventDefault();
+        tryLogin();
+      });
+      $("pinInput").addEventListener("input", () => {
+        $("pinInput").value = $("pinInput").value.replace(/\D/g, "").slice(0, 6);
+      });
+
+      $("btnLogout").addEventListener("click", () => {
+        sessionStorage.removeItem(LS_PIN);
+        pin = "";
+        selected = null;
+        $("pinInput").value = "";
+        showLogin();
+      });
+
+      $("btnRefresh").addEventListener("click", () => loadList().catch((e) => alert(e.message)));
+      setInterval(() => {
+        if ($("panelView").classList.contains("hidden")) return;
+        loadList().catch(() => {});
+      }, 2000);
+
+      document.querySelectorAll(".filter-btn[data-filter]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          filter = btn.dataset.filter;
+          document.querySelectorAll(".filter-btn[data-filter]").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          loadList().catch((e) => alert(e.message));
+        });
+      });
+
+      $("btnReveal").addEventListener("click", revealCount);
+      $("countInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") revealCount();
+      });
+      $("countInput").addEventListener("input", () => {
+        $("countInput").value = $("countInput").value.replace(/\D/g, "").slice(0, 3);
+      });
+
+      (function init() {
+        const saved = sessionStorage.getItem(LS_PIN);
+        if (saved) {
+          pin = saved;
+          showPanel();
+          loadList().catch(showLogin);
+        } else {
+          $("pinInput").focus();
+        }
+      })();
+    </script>
+  </body>
+</html>
