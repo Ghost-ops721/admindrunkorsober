@@ -218,7 +218,7 @@
     </div>
 
     <script>
-      const LS_PIN = "dos_admin_pin";
+      const LS_PIN = "dos_admin_pin_v1";
 
       function resolveApiBase() {
         const override = new URLSearchParams(location.search).get("api");
@@ -242,10 +242,16 @@
       let items = [];
       let selected = null;
       let lastPendingCount = null;
+      let pollTimer = null;
+      let listInFlight = false;
+
+      const POLL_MS_PENDING = 15000;
+      const POLL_MS_OTHER = 60000;
 
       const $ = (id) => document.getElementById(id);
 
       function showLogin() {
+        stopPolling();
         $("loginView").classList.remove("hidden");
         $("panelView").classList.add("hidden");
       }
@@ -253,6 +259,7 @@
       function showPanel() {
         $("loginView").classList.add("hidden");
         $("panelView").classList.remove("hidden");
+        startPolling();
       }
 
       async function api(path, opts = {}) {
@@ -272,8 +279,26 @@
         const text = await r.text();
         let data = {};
         try { data = text ? JSON.parse(text) : {}; } catch {}
-        if (!r.ok) throw new Error(data.error || "Request failed");
+        if (!r.ok) {
+          const err = new Error(data.error || "Request failed");
+          err.status = r.status;
+          throw err;
+        }
         return data;
+      }
+
+      function isAuthError(e) {
+        return e && (e.status === 401 || e.message === "Invalid PIN");
+      }
+
+      function clearAuth() {
+        localStorage.removeItem(LS_PIN);
+        pin = "";
+        selected = null;
+        lastPendingCount = null;
+        $("pinInput").value = "";
+        stopPolling();
+        showLogin();
       }
 
       function renderGrid() {
@@ -327,15 +352,48 @@
         lastPendingCount = count;
       }
 
-      async function loadList() {
-        const data = await api(`/analyses?filter=${filter}&limit=60`);
-        items = data.items || [];
-        alertNewPending(pendingCount(items));
-        if (selected) {
-          selected = items.find((i) => i.id === selected.id) || null;
+      async function loadList({ silent = false } = {}) {
+        if (listInFlight) return;
+        listInFlight = true;
+        try {
+          const data = await api(`/analyses?filter=${filter}&limit=60`);
+          items = data.items || [];
+          alertNewPending(pendingCount(items));
+          if (selected) {
+            selected = items.find((i) => i.id === selected.id) || null;
+          }
+          renderGrid();
+          if (selected) selectItem(selected);
+        } catch (e) {
+          if (isAuthError(e)) {
+            clearAuth();
+            $("loginErr").textContent = "Session expired — enter PIN again";
+            return;
+          }
+          if (!silent) throw e;
+        } finally {
+          listInFlight = false;
         }
-        renderGrid();
-        if (selected) selectItem(selected);
+      }
+
+      function pollIntervalMs() {
+        return filter === "pending" ? POLL_MS_PENDING : POLL_MS_OTHER;
+      }
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function startPolling() {
+        stopPolling();
+        if ($("panelView").classList.contains("hidden")) return;
+        pollTimer = setInterval(() => {
+          if (document.hidden) return;
+          loadList({ silent: true }).catch(() => {});
+        }, pollIntervalMs());
       }
 
       async function revealCount() {
@@ -366,7 +424,7 @@
         }
         try {
           await api("/analyses?limit=1");
-          sessionStorage.setItem(LS_PIN, pin);
+          localStorage.setItem(LS_PIN, pin);
           showPanel();
           await loadList();
         } catch (e) {
@@ -383,26 +441,25 @@
       });
 
       $("btnLogout").addEventListener("click", () => {
-        sessionStorage.removeItem(LS_PIN);
-        pin = "";
-        selected = null;
-        $("pinInput").value = "";
-        showLogin();
+        clearAuth();
       });
 
       $("btnRefresh").addEventListener("click", () => loadList().catch((e) => alert(e.message)));
-      setInterval(() => {
-        if ($("panelView").classList.contains("hidden")) return;
-        loadList().catch(() => {});
-      }, 2000);
 
       document.querySelectorAll(".filter-btn[data-filter]").forEach((btn) => {
         btn.addEventListener("click", () => {
           filter = btn.dataset.filter;
           document.querySelectorAll(".filter-btn[data-filter]").forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
+          startPolling();
           loadList().catch((e) => alert(e.message));
         });
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return;
+        if ($("panelView").classList.contains("hidden")) return;
+        loadList({ silent: true }).catch(() => {});
       });
 
       $("btnReveal").addEventListener("click", revealCount);
@@ -413,16 +470,28 @@
         $("countInput").value = $("countInput").value.replace(/\D/g, "").slice(0, 3);
       });
 
-      (function init() {
-        const saved = sessionStorage.getItem(LS_PIN);
-        if (saved) {
-          pin = saved;
-          showPanel();
-          loadList().catch(showLogin);
-        } else {
-          $("pinInput").focus();
+      async function restoreSession() {
+        const legacy = sessionStorage.getItem("dos_admin_pin");
+        if (legacy && !localStorage.getItem(LS_PIN)) {
+          localStorage.setItem(LS_PIN, legacy);
+          sessionStorage.removeItem("dos_admin_pin");
         }
-      })();
+        const saved = localStorage.getItem(LS_PIN);
+        if (!saved) {
+          $("pinInput").focus();
+          return;
+        }
+        pin = saved;
+        showPanel();
+        try {
+          await loadList();
+        } catch (e) {
+          $("emptyMsg").textContent = e.message || "Could not reach API — tap Refresh";
+          $("emptyMsg").classList.remove("hidden");
+        }
+      }
+
+      restoreSession();
     </script>
   </body>
 </html>
